@@ -18,143 +18,144 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #include "genetic.h"
+#include <vector>
+#include <algorithm>
+#include <time.h>
 #include <cstdlib>
-#include "time.h"
+#include <climits>
+#include <iostream>
+#include "tools.h"
 
-Genetic::Genetic( char* geneSeed, int geneSize, int (*evalGene) (char*) )
+TEMPLATE GENETIC::Genetic(genome_bitset genomeSeed, fitness_function fitnessFunction, CLASS_TYPE* object) :
+    m_randomCeiling(RAND_MAX - (RAND_MAX % (2-1)))
 {
-  m_evalGene = evalGene;
-  m_geneSize = geneSize;
-  m_genesInGeneration = 10; // 10 different genes in generation
-  m_mutationRate = 3; // how many bits to zap each generation? Consider Hamming walls.
-  m_genePool = (TGene*)malloc(m_genesInGeneration*sizeof(TGene));
-  for(int i=0; i<m_genesInGeneration; i++)
-  {
-    m_genePool[i].gene = (char*)malloc(m_geneSize*sizeof(char));
-  }
-  CopyGene( geneSeed, m_genePool[0].gene );
-  m_genePool[0].score = m_evalGene(geneSeed);
-  m_generations = 0;
-  int randomSeed;
-  srand(randomSeed+time(NULL));
-  // populate first generation (all equal seed)
-  CopyBestToRest();
+    m_fitnessFunction = fitnessFunction;
+    m_fitnessFunctionObject = object;
+    // set some meaningful settings
+    m_genomesInGeneration = 1000; // how many different genes in generation
+    m_mutationRate = 5; // how many bits to zap each generation?
+    m_surviveRate = 800;
+    m_verbose = false;
+    // create seed gene
+    m_bestSoFar.genome = genomeSeed;
+    m_bestSoFar.score = m_fitnessFunction(m_fitnessFunctionObject, genomeSeed);
+    // create initial population from seed gene
+    for(int i=0; i<m_genomesInGeneration; ++i)
+    {
+        m_genomePool.push_back(m_bestSoFar);
+    }
+    m_generations = 0;
+    // initialize randomizer
+    srand(1247+time(NULL));
 };
 
-Genetic::~Genetic()
+TEMPLATE GENETIC::~Genetic()
 {
-  for(int i=0; i<m_genesInGeneration; i++)
-  {
-    free(m_genePool[i].gene);
-  }
-  free(m_genePool);
 }
 
-void Genetic::CopyGene( char* src, char* dest )
+TEMPLATE void GENETIC::Generation( int count )
 {
-  if( m_geneSize > 0 )
-  {
-    for( int i=0; i<m_geneSize; i++ )
+    for(int i=0; i<count; ++i)
     {
-      dest[i] = src[i];
+        MutateCurrentGeneration();
+        MultiplyBestGenomes();
+        ++m_generations;
     }
-  }
 }
 
-void Genetic::CopyGene( TGene& src, TGene& dest )
+TEMPLATE typename GENETIC::genome_bitset GENETIC::GetBestGenome() const
 {
-    CopyGene( src.gene, dest.gene );
-    dest.score = src.score;
+    return m_genomePool[0].genome;
 }
 
-void Genetic::CopyBestToRest()
+TEMPLATE int GENETIC::GetBestScore() const
 {
-  for(int i=1; i<m_genesInGeneration; i++)
-  {
-    CopyGene( m_genePool[0].gene, m_genePool[i].gene );
-    m_genePool[i].score = m_genePool[0].score;
-  }
+    return m_genomePool[0].score;
 }
 
-void Genetic::Generation( int count )
+TEMPLATE int GENETIC::GetGenerationCount() const
 {
-  for( int i=0; i<count; i++ )
-  {
-    CopyBestToRest();
-    Mutate();
-    Sort();
-    ++m_generations;
-  }
+    return m_generations;
 }
 
-char* Genetic::GetBestGene()
+TEMPLATE void GENETIC::SetVerbose(const bool verbose) 
 {
-  return m_genePool[0].gene;
+    m_verbose = verbose;
 }
 
-int Genetic::GetBestScore()
+TEMPLATE void GENETIC::SetSurviveRate(const uint surviveRate) 
 {
-  return m_genePool[0].score;
+    m_surviveRate = surviveRate;
 }
 
-int Genetic::GetGenerationCount()
+TEMPLATE uint GENETIC::GetSurviveRate() const 
 {
-  return m_generations;
+    return m_surviveRate;
 }
 
-// to skip modulo bias
-int Genetic::GetRandom( int max )
+TEMPLATE void GENETIC::SetMutationRate(const uint mutationRate) 
 {
-  int validCeiling = (RAND_MAX - (RAND_MAX % max));
-  int number;
-  do
-  {
-    number = rand();
-  }
-  while( number > validCeiling );
-  number = number % max;
-  return number;
+    m_mutationRate = mutationRate;
 }
 
-void Genetic::Mutate()
+TEMPLATE uint GENETIC::GetMutationRate() const 
 {
-  if( (m_generations % 1000000) == 0 )
-  {
-      int whichByte = GetRandom(m_geneSize);
-      m_genePool[0].gene[whichByte] = 0;
-      m_genePool[0].score = m_evalGene(m_genePool[0].gene);
-  }
-  // skip the best one, star from 1
-  for( int i=1; i<m_genesInGeneration; i++)
-  {
-    for( int rate=0; rate<m_mutationRate; rate++)
+    return m_mutationRate;
+}
+
+TEMPLATE void GENETIC::SetGenomesInGeneration(uint genomesInGeneration) 
+{
+    m_genomesInGeneration = genomesInGeneration;
+}
+
+TEMPLATE uint GENETIC::GetGenomesInGeneration() const 
+{
+    return m_genomesInGeneration;
+}
+
+TEMPLATE int GENETIC::GetRandom() const
+{
+    // without modulo bias
+    int number;
+    do
     {
-      // flip random bit in random byte
-      int whichByte = GetRandom(m_geneSize);
-      int whichBit = GetRandom(8);
-      char gammaray = 1 << whichBit; // cool name for mutagen, huh? :)
-      m_genePool[i].gene[whichByte] ^= gammaray; // gets radiated
-      m_genePool[i].score = m_evalGene(m_genePool[i].gene);
+        number = rand();
     }
-  }
+    while(number > m_randomCeiling);
+    number = number % (GENOME_SIZE-1);
+    return number;
 }
 
-void Genetic::Sort()
+TEMPLATE void GENETIC::MutateCurrentGeneration()
 {
-  // just simple selection sort
-  TGene temp;
-  temp.gene = (char*)malloc(m_geneSize*sizeof(char*));
-  for( int i=0; i<m_genesInGeneration; i++)
-  {
-    for( int j=i+1; j<m_genesInGeneration; j++)
+    // mutate whole population skipping the best one, so start from 1
+    for( int i=1; i<m_genomesInGeneration; ++i)
     {
-      if( m_genePool[j].score > m_genePool[i].score )
-      {
-        CopyGene( m_genePool[i], temp );
-	CopyGene( m_genePool[j], m_genePool[i] );
-        CopyGene( temp, m_genePool[j] );
-      }
+        MutateGenome(m_genomePool[i]);
     }
-  }
-  free(temp.gene);
+}
+
+TEMPLATE void GENETIC::MutateGenome(TGenome& genome)
+{
+    for(int rate=0; rate<m_mutationRate; ++rate)
+    {
+        // flip random bit
+        size_t whichBit = GetRandom();
+        genome.genome[whichBit].flip();
+        genome.score = m_fitnessFunction(m_fitnessFunctionObject, genome.genome);
+    }
+}
+
+TEMPLATE void GENETIC::MultiplyBestGenomes()
+{
+    std::sort(m_genomePool.begin(), m_genomePool.end(), 
+        [](const TGenome& a, const TGenome& b) 
+        { 
+            return a.score > b.score; 
+        });
+    for(int i=m_surviveRate, j=0; i<m_genomePool.size(); ++i, ++j)
+    {
+        if(j>=m_surviveRate) j=0;
+        m_genomePool[i] = m_genomePool[j];
+    }
 }

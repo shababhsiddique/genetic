@@ -20,40 +20,60 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef GENETIC_H
 #define	GENETIC_H
 
-struct TGene
-{
-  char* gene;
-  int score;
-};
+#include <bitset>
+#include <vector>
+#include <functional>
 
-class Genetic
+#define GENOME_TYPE _genomeType
+#define CLASS_TYPE _Type
+#define TEMPLATE template<class CLASS_TYPE, size_t GENOME_SIZE>
+#define GENETIC Genetic<CLASS_TYPE, GENOME_SIZE>
+
+TEMPLATE class Genetic
 {
 public:
-  Genetic( char* geneSeed, int geneSize, int (*evalGene) (char*) );
-  ~Genetic();
+    using genome_bitset = std::bitset<GENOME_SIZE>;
+    using fitness_function = std::function<int(CLASS_TYPE*, const Genetic::genome_bitset&)>;
+    Genetic(genome_bitset genomeSeed, fitness_function fitnessFunction, CLASS_TYPE* object);
+    ~Genetic();
 
-  void Generation( int count );
+    void Generation( int count );
 
-  char* GetBestGene();
-  int GetBestScore();
-  int GetGenerationCount();
+    genome_bitset GetBestGenome() const;
+    int GetBestScore() const;
+    int GetGenerationCount() const;
+    void SetVerbose(const bool verbose);
+    void SetSurviveRate(const uint surviveRate);
+    uint GetSurviveRate() const;
+    void SetMutationRate(const uint mutationRate);
+    uint GetMutationRate() const;
+    void SetGenomesInGeneration(const uint genomesInGeneration);
+    uint GetGenomesInGeneration() const;
 
 private:
-  void CopyGene( char* src, char* dest );
-  void CopyGene( TGene& src, TGene& dest );
-  void CopyBestToRest();
-  int GetRandom( int max );
-  void Mutate();
-  void Sort();
+    struct TGenome
+    {
+        genome_bitset genome;
+        int score;
+    };
 
-  int m_geneSize;
-  TGene* m_genePool;
-  int (*m_evalGene) (char*); // given fitness function
-  int m_generations;
+    int GetRandom() const;
+    void MutateCurrentGeneration();
+    void MutateGenome(TGenome& genome);
+    void MultiplyBestGenomes();
 
-  // settings
-  int m_genesInGeneration; // gene pool size each generation
-  int m_mutationRate; // how many bits to mutate in each mutation
+    std::vector<TGenome> m_genomePool;
+    TGenome m_bestSoFar;
+    fitness_function m_fitnessFunction;
+    CLASS_TYPE* m_fitnessFunctionObject;
+    int m_generations;
+    const int m_randomCeiling; // to avoid modulo bias
+
+    // settings
+    uint m_genomesInGeneration; // genome pool size
+    uint m_mutationRate; // how many bits to mutate
+    uint m_surviveRate; // how many genomes should survive generation and multiply
+    bool m_verbose; // debug
 };
 
 #endif	/* GENETIC_H */
